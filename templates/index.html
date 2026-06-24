@@ -1,0 +1,283 @@
+<!-- Save this file as: templates/index.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Reportes RenoBo</title>
+    <!-- Bootstrap CSS for clean styling -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Leaflet CSS for Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { height: 400px; width: 100%; border-radius: 8px; border: 1px solid #dee2e6; }
+        .tag-badge { cursor: pointer; transition: 0.2s; }
+        .tag-badge:hover { background-color: #dc3545 !important; }
+        .spinner-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.8); z-index: 1000;
+            display: none; justify-content: center; align-items: center; flex-direction: column;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="spinner-overlay" id="loading-spinner">
+    <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status"></div>
+    <h4 class="mt-3" id="loading-text">Generando reporte... (Esto puede tomar unos segundos)</h4>
+</div>
+
+<div class="container py-5">
+    <h2 class="mb-4 text-primary">Generador de Estudios de Mercado</h2>
+    
+    <form id="reportForm">
+        <!-- SECCIÓN 1: BASES DE DATOS -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">1. Rutas de Bases de Datos (Locales)</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Base Catastral (.csv)</label>
+                        <input type="text" class="form-control" id="archivo_datos" value="Base_catastral_2026.csv" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Galería Inmobiliaria (Vivienda)</label>
+                        <input type="text" class="form-control" id="db_gi" value="La Galería Inmobiliaria/Renobo_Bogotá_Bases_05-26.xlsb" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Coordenada Urbana (Vivienda)</label>
+                        <input type="text" class="form-control" id="db_cu" value="Coordenada Urbana/Base General Cundinamarca May 2026.xlsx" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Galería Inmobiliaria (Comercio)</label>
+                        <input type="text" class="form-control" id="db_gi_comercial" value="La Galería Inmobiliaria/Bogota_Comercio_Def_05-26.xlsb" required>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 2: DATOS DEL PREDIO & MAPA -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">2. Datos del Predio</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Nombre del Predio</label>
+                        <input type="text" class="form-control" id="nombre_predio" value="Sosiego" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Código del Lote (LotCodigo)</label>
+                        <input type="text" class="form-control" id="lotcodigo_predio" value="001109024007" required>
+                    </div>
+                    <div class="col-md-12 mt-4">
+                        <label class="form-label text-muted">Mueve el marcador rojo en el mapa para ajustar las coordenadas</label>
+                        <div id="map"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Latitud</label>
+                        <input type="number" step="any" class="form-control" id="latitud" value="4.575164353346292" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Longitud</label>
+                        <input type="number" step="any" class="form-control" id="longitud" value="-74.079864953606" required>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 3: RADIOS Y EXCLUSIONES -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">3. Radios de Análisis y Exclusiones</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <label class="form-label">Radio Galería Inmob. (km)</label>
+                        <input type="number" step="0.1" class="form-control" id="radio_gi" value="1.5" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Radio Coordenada Urbana (km)</label>
+                        <input type="number" step="0.1" class="form-control" id="radio_cu" value="1.0" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Radio No Residencial (km)</label>
+                        <input type="number" step="0.1" class="form-control" id="radio_comercio" value="1.0" required>
+                    </div>
+                </div>
+
+                <!-- Exclusion Lists UI -->
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold text-danger">Excluir Coordenada Urbana</label>
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" id="input_excluir_cu" placeholder="ID Proyecto">
+                            <button class="btn btn-outline-secondary" type="button" onclick="addTag('cu')">Agregar</button>
+                        </div>
+                        <div id="tags_cu" class="d-flex flex-wrap gap-2"></div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold text-danger">Excluir Galería Inmob. (Vivienda)</label>
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" id="input_excluir_gi" placeholder="ID Proyecto">
+                            <button class="btn btn-outline-secondary" type="button" onclick="addTag('gi')">Agregar</button>
+                        </div>
+                        <div id="tags_gi" class="d-flex flex-wrap gap-2"></div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold text-danger">Excluir Galería Inmob. (Comercio)</label>
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" id="input_excluir_gic" placeholder="ID Proyecto">
+                            <button class="btn btn-outline-secondary" type="button" onclick="addTag('gic')">Agregar</button>
+                        </div>
+                        <div id="tags_gic" class="d-flex flex-wrap gap-2"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg w-100 mb-5 shadow">Generar Documento de Word</button>
+    </form>
+</div>
+
+<!-- Scripts -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // === 1. MAP LOGIC ===
+    const initialLat = 4.575164;
+    const initialLng = -74.079864;
+    const map = L.map('map').setView([initialLat, initialLng], 14);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    }).addTo(map);
+
+    let marker = L.marker([initialLat, initialLng], {draggable: true}).addTo(map);
+
+    // Update inputs when marker is dragged
+    marker.on('dragend', function(e) {
+        document.getElementById('latitud').value = marker.getLatLng().lat.toFixed(6);
+        document.getElementById('longitud').value = marker.getLatLng().lng.toFixed(6);
+    });
+
+    // Update marker when inputs change manually
+    document.getElementById('latitud').addEventListener('input', updateMarker);
+    document.getElementById('longitud').addEventListener('input', updateMarker);
+
+    function updateMarker() {
+        const lat = parseFloat(document.getElementById('latitud').value);
+        const lng = parseFloat(document.getElementById('longitud').value);
+        if(!isNaN(lat) && !isNaN(lng)) {
+            marker.setLatLng([lat, lng]);
+            map.panTo([lat, lng]);
+        }
+    }
+
+    // === 2. EXCLUSION LISTS LOGIC ===
+    let exclusionLists = {
+        cu: [24799, 19339, 1000013393, 1000002172, 1000007996, 1000011711], // Pre-populated
+        gi: [],
+        gic: []
+    };
+
+    function renderTags() {
+        ['cu', 'gi', 'gic'].forEach(type => {
+            const container = document.getElementById(`tags_${type}`);
+            container.innerHTML = '';
+            exclusionLists[type].forEach(id => {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-secondary tag-badge p-2';
+                badge.innerHTML = `${id} &times;`;
+                badge.onclick = () => removeTag(type, id);
+                container.appendChild(badge);
+            });
+        });
+    }
+
+    function addTag(type) {
+        const input = document.getElementById(`input_excluir_${type}`);
+        const val = input.value.trim();
+        if (val !== '' && !exclusionLists[type].includes(val)) {
+            exclusionLists[type].push(val); // Keep as string or int
+            input.value = '';
+            renderTags();
+        }
+    }
+
+    function removeTag(type, idToRemove) {
+        exclusionLists[type] = exclusionLists[type].filter(id => id !== idToRemove);
+        renderTags();
+    }
+
+    // Initial Render
+    renderTags();
+
+    // Allow pressing "Enter" to add tag
+    ['cu', 'gi', 'gic'].forEach(type => {
+        document.getElementById(`input_excluir_${type}`).addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); addTag(type); }
+        });
+    });
+
+    // === 3. FORM SUBMISSION LOGIC ===
+    document.getElementById('reportForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Show Spinner
+        document.getElementById('loading-spinner').style.display = 'flex';
+
+        // Build Payload
+        const payload = {
+            archivo_datos: document.getElementById('archivo_datos').value,
+            db_gi: document.getElementById('db_gi').value,
+            db_cu: document.getElementById('db_cu').value,
+            db_gi_comercial: document.getElementById('db_gi_comercial').value,
+            
+            nombre_predio: document.getElementById('nombre_predio').value,
+            lotcodigo_predio: document.getElementById('lotcodigo_predio').value,
+            coordenadas: [parseFloat(document.getElementById('latitud').value), parseFloat(document.getElementById('longitud').value)],
+            
+            radio_gi: parseFloat(document.getElementById('radio_gi').value),
+            radio_cu: parseFloat(document.getElementById('radio_cu').value),
+            radio_comercio: parseFloat(document.getElementById('radio_comercio').value),
+            
+            excluir_codigos_cu: exclusionLists.cu,
+            excluir_codigos_gi_proyectos: exclusionLists.gi,
+            excluir_codigos_gi_comercio: exclusionLists.gic
+        };
+
+        // Send to backend
+        fetch('/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            if (!response.ok) throw new Error("Error en el servidor");
+            return response.blob();
+        })
+        .then(blob => {
+            // Create a link to download the file automatically
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Reporte_${payload.nombre_predio}.docx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            
+            document.getElementById('loading-spinner').style.display = 'none';
+        })
+        .catch(error => {
+            alert("Ocurrió un error al generar el reporte. Revisa la consola del servidor de Python.");
+            document.getElementById('loading-spinner').style.display = 'none';
+            console.error(error);
+        });
+    });
+</script>
+</body>
+</html>
